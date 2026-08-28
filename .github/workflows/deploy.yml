@@ -28,6 +28,7 @@ jobs:
       # Si tu repo es https://github.com/TU_USUARIO/clima-app -> base-href debe ser /clima-app/
       # Si es https://github.com/TU_USUARIO/TU_USUARIO.github.io -> usa /
       - run: npx ng build --base-href /clima-app/
+      - run: cp ./dist/clima-app/browser/index.html ./dist/clima-app/browser/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist/clima-app/browser

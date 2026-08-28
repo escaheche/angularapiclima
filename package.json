@@ -6,7 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "build:ghpages": "ng build --base-href /clima-app/",
-    "deploy": "npx angular-cli-ghpages --dir=dist/clima-app/browser",
+    "deploy": "npm run build:ghpages && copy dist\\clima-app\\browser\\index.html dist\\clima-app\\browser\\404.html && npx angular-cli-ghpages --dir=dist/clima-app/browser",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
