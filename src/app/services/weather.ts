@@ -39,12 +39,19 @@ export interface WeatherDaily {
   precipitation_sum: number[];
 }
 
+export interface WeatherHourly {
+  time: string[];
+  temperature_2m: number[];
+  weather_code: number[];
+}
+
 export interface WeatherResponse {
   latitude: number;
   longitude: number;
   timezone: string;
   current: WeatherCurrent;
   daily: WeatherDaily;
+  hourly?: WeatherHourly;
   current_units?: any;
 }
 
@@ -85,6 +92,7 @@ export class WeatherService {
       .set('latitude', lat.toString())
       .set('longitude', lon.toString())
       .set('current', 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation')
+      .set('hourly', 'temperature_2m,weather_code')
       .set('daily', 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum')
       .set('timezone', 'auto')
       .set('forecast_days', '5');

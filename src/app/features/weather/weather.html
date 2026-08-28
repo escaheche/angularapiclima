@@ -1,4 +1,11 @@
 <div class="weather-page">
+  <!-- Toast éxito 200 OK - aparece y desaparece -->
+  <div class="toast" *ngIf="toastVisible()" role="status" aria-live="polite">
+    <span class="toast-icon">✓</span>
+    <span>{{ toastMessage() }}</span>
+    <button class="toast-close" (click)="toastVisible.set(false)">✕</button>
+  </div>
+
   <!-- Header -->
   <header class="topbar">
     <div class="brand">
@@ -36,121 +43,164 @@
         </span>
       </button>
     </div>
-
     <div class="quick">
       <span>Prueba:</span>
       @for (c of quickCities; track c) {
         <button class="chip" (click)="selectQuick(c)">{{ c }}</button>
       }
     </div>
-
     <p class="hint">Usa la API: <code>geocoding-api.open-meteo.com/v1/search?name=CIUDAD</code> + <code>api.open-meteo.com/v1/forecast</code></p>
   </section>
 
-  <!-- Estados de pantalla (diseñando los estados) -->
-  <div class="states-grid">
+  <!-- Resultado principal - siempre visible en éxito, forecast ya no se pierde abajo -->
+  <section class="weather-result" *ngIf="data() && status() === 'success'">
+    <div class="main-weather">
+      <div class="location">
+        <h2>{{ data()!.location.name }} <span class="country">{{ data()!.location.country }}</span></h2>
+        <p class="region">{{ data()!.location.admin1 || '' }} • {{ data()!.weather.timezone }} • lat {{ data()!.location.latitude | number:'1.2-2' }}, lon {{ data()!.location.longitude | number:'1.2-2' }}</p>
+      </div>
+      <div class="temp-block">
+        <div class="icon-big">{{ info?.icon }}</div>
+        <div class="temp">
+          <span class="degrees">{{ data()!.weather.current.temperature_2m | number:'1.0-0' }}°</span>
+          <span class="feels">Sensación {{ data()!.weather.current.apparent_temperature | number:'1.0-0' }}°</span>
+        </div>
+        <div class="condition">
+          <strong>{{ info?.label }}</strong>
+          <span>{{ info?.desc }}</span>
+        </div>
+      </div>
 
-    <!-- CARGANDO -->
+      <div class="clothing-banner">
+        <span class="icon">👕</span>
+        <div>
+          <strong>¿Cómo vestirme?</strong>
+          <p>{{ clothingTip }} — {{ info?.clothing }}</p>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">
+          <span>💧 Humedad</span>
+          <strong>{{ data()!.weather.current.relative_humidity_2m }}%</strong>
+        </div>
+        <div class="metric">
+          <span>💨 Viento</span>
+          <strong>{{ data()!.weather.current.wind_speed_10m }} km/h</strong>
+        </div>
+        <div class="metric">
+          <span>🌧️ Precipitación</span>
+          <strong>{{ data()!.weather.current.precipitation }} mm</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gráfico horario - nuevo -->
+  <section class="hourly-section" *ngIf="data() && status() === 'success' && hourlyChart.length">
+    <div class="hourly-header">
+      <div>
+        <h3>📈 Temperatura por hora — próximas 24 h</h3>
+        <p class="hourly-sub">Min {{ hourlyStats.min | number:'1.0-0' }}° • Max {{ hourlyStats.max | number:'1.0-0' }}° • Prom {{ hourlyStats.avg | number:'1.0-0' }}°</p>
+      </div>
+      <span class="hourly-badge">hourly • Open-Meteo</span>
+    </div>
+
+    <div class="chart-wrap">
+      <svg viewBox="0 0 800 100" preserveAspectRatio="none" class="chart-svg" role="img" aria-label="Gráfico temperatura por hora">
+        <defs>
+          <linearGradient id="gradArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#6366f1" stop-opacity="0.28"/>
+            <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="gradLine" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#6366f1"/>
+            <stop offset="100%" stop-color="#ec4899"/>
+          </linearGradient>
+        </defs>
+        <!-- área -->
+        <polygon [attr.points]="chartAreaPoints" fill="url(#gradArea)" />
+        <!-- línea -->
+        <polyline [attr.points]="chartPoints" fill="none" stroke="url(#gradLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        <!-- puntos -->
+        @for (dot of chartDots; track dot.x) {
+          <g>
+            <circle [attr.cx]="dot.x" [attr.cy]="dot.y" r="3.5" fill="#6366f1" stroke="#fff" stroke-width="1.5"/>
+            <text [attr.x]="dot.x" [attr.y]="dot.y - 8" text-anchor="middle" font-size="7" fill="#334155" font-weight="700">{{ dot.temp | number:'1.0-0' }}°</text>
+          </g>
+        }
+      </svg>
+      <!-- etiquetas hora cada 3h para no saturar -->
+      <div class="hour-labels">
+        @for (h of hourlyChart; track h.time; let i = $index) {
+          <span *ngIf="i % 3 === 0" class="h-label">{{ h.label }}</span>
+          <span *ngIf="i % 3 !== 0" class="h-label empty"></span>
+        }
+      </div>
+    </div>
+
+    <!-- tira horaria scrollable -->
+    <div class="hourly-strip">
+      @for (h of hourlyChart; track h.time) {
+        <div class="hour-item">
+          <span class="hour-time">{{ h.label }}</span>
+          <span class="hour-icon">{{ h.info.icon }}</span>
+          <span class="hour-temp">{{ h.temp | number:'1.0-0' }}°</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- Forecast ahora es sección independiente y destacada, no dentro del card de éxito -->
+  <section class="forecast-section" *ngIf="data() && status() === 'success'">
+    <div class="forecast-header">
+      <h3>Pronóstico 5 días</h3>
+      <span class="forecast-subtitle">Desliza o revisa el detalle</span>
+    </div>
+    <div class="days">
+      @for (day of dailyForecast; track day.date; let idx = $index) {
+        <div class="day-card" [class.today]="idx === 0">
+          <span class="badge-today" *ngIf="idx === 0">HOY</span>
+          <span class="day-date">{{ formatDate(day.date) }}</span>
+          <span class="day-icon">{{ day.info.icon }}</span>
+          <span class="day-label">{{ day.info.label }}</span>
+          <span class="day-temps"><strong>{{ day.max | number:'1.0-0' }}°</strong> / {{ day.min | number:'1.0-0' }}°</span>
+          <span class="day-precip">💧 {{ day.precip }} mm</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- Estados de pantalla: solo loading / error / idle (éxito ya es toast + result) -->
+  <div class="states-grid">
     <section class="state-card loading" *ngIf="status() === 'loading'">
       <div class="state-icon gray"><span class="spinner"></span></div>
       <h3>Cargando</h3>
-      <p>Ocurre durante la fase de espera de red.<br>Bloquea botones para evitar doble petición y da feedback al usuario.</p>
+      <p>Bloquea botones para evitar doble petición y da feedback al usuario.</p>
       <div class="skeleton shimmer"></div>
       <div class="skeleton short shimmer"></div>
     </section>
 
-    <!-- ÉXITO -->
-    <section class="state-card success" *ngIf="status() === 'success' && data()">
-      <div class="state-icon green">✓</div>
-      <h3>Éxito <small>200 OK</small></h3>
-      <p>La API respondió con Status 200. Mapeamos la interfaz y renderizamos los datos limpios en la vista.</p>
-
-      <!-- Weather Data Render -->
-      <div class="weather-result">
-        <div class="main-weather">
-          <div class="location">
-            <h2>{{ data()!.location.name }} <span class="country">{{ data()!.location.country }}</span></h2>
-            <p class="region">{{ data()!.location.admin1 || '' }} • {{ data()!.weather.timezone }} • lat {{ data()!.location.latitude | number:'1.2-2' }}, lon {{ data()!.location.longitude | number:'1.2-2' }}</p>
-          </div>
-          <div class="temp-block">
-            <div class="icon-big">{{ info?.icon }}</div>
-            <div class="temp">
-              <span class="degrees">{{ data()!.weather.current.temperature_2m | number:'1.0-0' }}°</span>
-              <span class="feels">Sensación {{ data()!.weather.current.apparent_temperature | number:'1.0-0' }}°</span>
-            </div>
-            <div class="condition">
-              <strong>{{ info?.label }}</strong>
-              <span>{{ info?.desc }}</span>
-            </div>
-          </div>
-
-          <div class="clothing-banner">
-            <span class="icon">👕</span>
-            <div>
-              <strong>¿Cómo vestirme?</strong>
-              <p>{{ clothingTip }} — {{ info?.clothing }}</p>
-            </div>
-          </div>
-
-          <div class="metrics">
-            <div class="metric">
-              <span>💧 Humedad</span>
-              <strong>{{ data()!.weather.current.relative_humidity_2m }}%</strong>
-            </div>
-            <div class="metric">
-              <span>💨 Viento</span>
-              <strong>{{ data()!.weather.current.wind_speed_10m }} km/h</strong>
-            </div>
-            <div class="metric">
-              <span>🌧️ Precipitación</span>
-              <strong>{{ data()!.weather.current.precipitation }} mm</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="forecast">
-          <h4>Pronóstico 5 días</h4>
-          <div class="days">
-            @for (day of dailyForecast; track day.date) {
-              <div class="day-card">
-                <span class="day-date">{{ formatDate(day.date) }}</span>
-                <span class="day-icon">{{ day.info.icon }}</span>
-                <span class="day-label">{{ day.info.label }}</span>
-                <span class="day-temps"><strong>{{ day.max | number:'1.0-0' }}°</strong> / {{ day.min | number:'1.0-0' }}°</span>
-                <span class="day-precip">💧 {{ day.precip }} mm</span>
-              </div>
-            }
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ERROR -->
     <section class="state-card error" *ngIf="status() === 'error'">
       <div class="state-icon red">🐛</div>
       <h3>Error <small *ngIf="error()">{{ error()!.status }}</small></h3>
-
       <div class="error-box" [ngSwitch]="error()?.status">
-        <p *ngSwitchCase="400">⚠️ <strong>400 Bad Request</strong> — {{ error()!.message }}<br><small>→ Mostrar error de validación en el formulario al usuario.</small></p>
-        <p *ngSwitchCase="401">🔒 <strong>401 Unauthorized</strong> — {{ error()!.message }}<br><small>→ Redirigir a la pantalla de Login automáticamente.</small></p>
-        <p *ngSwitchCase="404">🔍 <strong>404 Not Found</strong> — {{ error()!.message }}<br><small>→ Mostrar estado vacío o mensaje de “No encontrado”.</small></p>
-        <p *ngSwitchDefault>❌ <strong>Error {{ error()?.status }}</strong> — {{ error()?.message }}<br><small>Manejo de códigos 4xx o 5xx mediante catchError. Mensajes amigables.</small></p>
+        <p *ngSwitchCase="400">⚠️ <strong>400</strong> — {{ error()!.message }}</p>
+        <p *ngSwitchCase="401">🔒 <strong>401</strong> — {{ error()!.message }}</p>
+        <p *ngSwitchCase="404">🔍 <strong>404</strong> — {{ error()!.message }}</p>
+        <p *ngSwitchDefault>❌ <strong>Error {{ error()?.status }}</strong> — {{ error()?.message }}</p>
       </div>
-
       <button class="secondary-btn" (click)="search()">Reintentar</button>
-
-      <!-- Demo botones para forzar estados 401/400/404 según tabla -->
       <div class="error-demo">
         <span>Simular:</span>
-        <button class="chip danger" (click)="error.set({status:400, message:'Falta un campo (ej: ciudad vacía)'})">400</button>
-        <button class="chip danger" (click)="error.set({status:401, message:'Falta token / sesión expirada'}); showLoginRedirect.set(true)">401</button>
-        <button class="chip danger" (click)="error.set({status:404, message:'No existe esa ciudad en la BD'})">404</button>
-        <button class="chip danger" (click)="error.set({status:500, message:'Error interno del servidor'})">500</button>
+        <button class="chip danger" (click)="error.set({status:400, message:'Falta un campo'})">400</button>
+        <button class="chip danger" (click)="error.set({status:401, message:'Falta token'}); showLoginRedirect.set(true)">401</button>
+        <button class="chip danger" (click)="error.set({status:404, message:'Ciudad no encontrada'})">404</button>
+        <button class="chip danger" (click)="error.set({status:500, message:'Error servidor'})">500</button>
       </div>
       <p *ngIf="showLoginRedirect()" class="login-hint">➡️ Redirigiendo a /login ... (simulado)</p>
     </section>
 
-    <!-- IDLE -->
     <section class="state-card idle" *ngIf="status() === 'idle'">
       <div class="state-icon idle-icon">🌤️</div>
       <h3>Busca tu ciudad</h3>
@@ -163,45 +213,7 @@
     </section>
   </div>
 
-  <!-- Tabla de códigos (referencia visual de la imagen) -->
-  <section class="code-table">
-    <h3>Tabla de códigos HTTP → Acción en el Frontend</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Significado Técnico</th>
-            <th>Acción en el Frontend</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="ok">200 OK</td>
-            <td>La petición fue exitosa.</td>
-            <td>Ocultar spinner, renderizar los datos en pantalla.</td>
-          </tr>
-          <tr>
-            <td class="warn">400 Bad Request</td>
-            <td>Datos mal formateados (ej. falta un campo).</td>
-            <td>Mostrar error de validación en el formulario.</td>
-          </tr>
-          <tr>
-            <td class="warn">401 Unauthorized</td>
-            <td>Usuario no autenticado (falta token).</td>
-            <td>Redirigir a Login automáticamente.</td>
-          </tr>
-          <tr>
-            <td class="err">404 Not Found</td>
-            <td>El recurso no existe en la BD.</td>
-            <td>Mostrar estado vacío o “No encontrado”.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
   <footer class="footer">
-    <span>Hecho con Angular {{ quickCities.length }} ciudades rápidas • API libre Open-Meteo • Geocoding + Forecast</span>
+    <span>Hecho con Angular • API libre Open-Meteo • Geocoding + Forecast</span>
   </footer>
 </div>
